@@ -2,7 +2,7 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import Version
 
-from fromager import sdist
+from fromager import bootstrapper
 from fromager.context import WorkContext
 from fromager.dependency_graph import DependencyGraph
 from fromager.requirements_file import RequirementType
@@ -59,12 +59,12 @@ old_graph.add_dependency(
 
 
 def test_resolve_from_graph_no_changes(tmp_context: WorkContext):
+    bt = bootstrapper.Bootstrapper(tmp_context, None, old_graph)
+    bt.why = [(RequirementType.TOP_LEVEL, Requirement("foo"), Version("1.0.0"))]
+
     # resolving new dependency that doesn't exist in graph
     assert (
-        sdist._resolve_from_graph(
-            tmp_context,
-            prev_graph=old_graph,
-            parent_req=Requirement("foo"),
+        bt._resolve_from_graph(
             req_type=RequirementType.INSTALL,
             req=Requirement("xyz"),
             pre_built=False,
@@ -73,30 +73,23 @@ def test_resolve_from_graph_no_changes(tmp_context: WorkContext):
     )
 
     # resolving pbr dependency of foo
-    assert sdist._resolve_from_graph(
-        tmp_context,
-        prev_graph=old_graph,
-        parent_req=Requirement("foo"),
+    assert bt._resolve_from_graph(
         req_type=RequirementType.INSTALL,
         req=Requirement("pbr>=5"),
         pre_built=False,
     ) == ("", Version("7"))
 
+    bt.why = [(RequirementType.TOP_LEVEL, Requirement("bar"), Version("1.0.0"))]
     # resolving pbr dependency of bar
-    assert sdist._resolve_from_graph(
-        tmp_context,
-        prev_graph=old_graph,
-        parent_req=Requirement("bar"),
+    assert bt._resolve_from_graph(
         req_type=RequirementType.INSTALL,
         req=Requirement("pbr>=5,<7"),
         pre_built=False,
     ) == ("", Version("6"))
 
+    bt.why = [(RequirementType.TOP_LEVEL, Requirement("blah"), Version("1.0.0"))]
     # resolving pbr dependency of blah
-    assert sdist._resolve_from_graph(
-        tmp_context,
-        prev_graph=old_graph,
-        parent_req=Requirement("blah"),
+    assert bt._resolve_from_graph(
         req_type=RequirementType.INSTALL,
         req=Requirement("pbr==5"),
         pre_built=False,
@@ -104,6 +97,8 @@ def test_resolve_from_graph_no_changes(tmp_context: WorkContext):
 
 
 def test_resolve_from_graph_install_dep_upgrade(tmp_context: WorkContext):
+    bt = bootstrapper.Bootstrapper(tmp_context, None, old_graph)
+
     # simulating new bootstrap with a toplevel requirement of pbr==8
     tmp_context.dependency_graph.add_dependency(
         parent_name=None,
@@ -113,31 +108,25 @@ def test_resolve_from_graph_install_dep_upgrade(tmp_context: WorkContext):
         req_version=Version("8"),
     )
 
+    bt.why = [(RequirementType.TOP_LEVEL, Requirement("foo"), Version("1.0.0"))]
     # resolving pbr dependency of foo
-    assert sdist._resolve_from_graph(
-        tmp_context,
-        prev_graph=old_graph,
-        parent_req=Requirement("foo"),
+    assert bt._resolve_from_graph(
         req_type=RequirementType.INSTALL,
         req=Requirement("pbr>=5"),
         pre_built=False,
     ) == ("", Version("8"))
 
+    bt.why = [(RequirementType.TOP_LEVEL, Requirement("bar"), Version("1.0.0"))]
     # resolving pbr dependency of bar
-    assert sdist._resolve_from_graph(
-        tmp_context,
-        prev_graph=old_graph,
-        parent_req=Requirement("bar"),
+    assert bt._resolve_from_graph(
         req_type=RequirementType.INSTALL,
         req=Requirement("pbr>=5,<7"),
         pre_built=False,
     ) == ("", Version("6"))
 
+    bt.why = [(RequirementType.TOP_LEVEL, Requirement("blah"), Version("1.0.0"))]
     # resolving pbr dependency of blah
-    assert sdist._resolve_from_graph(
-        tmp_context,
-        prev_graph=old_graph,
-        parent_req=Requirement("blah"),
+    assert bt._resolve_from_graph(
         req_type=RequirementType.INSTALL,
         req=Requirement("pbr==5"),
         pre_built=False,
@@ -145,6 +134,8 @@ def test_resolve_from_graph_install_dep_upgrade(tmp_context: WorkContext):
 
 
 def test_resolve_from_graph_install_dep_downgrade(tmp_context: WorkContext):
+    bt = bootstrapper.Bootstrapper(tmp_context, None, old_graph)
+
     # simulating new bootstrap with a toplevel requirement of pbr<=6
     tmp_context.dependency_graph.add_dependency(
         parent_name=None,
@@ -154,31 +145,25 @@ def test_resolve_from_graph_install_dep_downgrade(tmp_context: WorkContext):
         req_version=Version("6"),
     )
 
+    bt.why = [(RequirementType.TOP_LEVEL, Requirement("foo"), Version("1.0.0"))]
     # resolving pbr dependency of foo
-    assert sdist._resolve_from_graph(
-        tmp_context,
-        prev_graph=old_graph,
-        parent_req=Requirement("foo"),
+    assert bt._resolve_from_graph(
         req_type=RequirementType.INSTALL,
         req=Requirement("pbr>=5"),
         pre_built=False,
     ) == ("", Version("6"))
 
+    bt.why = [(RequirementType.TOP_LEVEL, Requirement("bar"), Version("1.0.0"))]
     # resolving pbr dependency of bar
-    assert sdist._resolve_from_graph(
-        tmp_context,
-        prev_graph=old_graph,
-        parent_req=Requirement("bar"),
+    assert bt._resolve_from_graph(
         req_type=RequirementType.INSTALL,
         req=Requirement("pbr>=5,<7"),
         pre_built=False,
     ) == ("", Version("6"))
 
+    bt.why = [(RequirementType.TOP_LEVEL, Requirement("blah"), Version("1.0.0"))]
     # resolving pbr dependency of blah
-    assert sdist._resolve_from_graph(
-        tmp_context,
-        prev_graph=old_graph,
-        parent_req=Requirement("blah"),
+    assert bt._resolve_from_graph(
         req_type=RequirementType.INSTALL,
         req=Requirement("pbr==5"),
         pre_built=False,
@@ -186,6 +171,8 @@ def test_resolve_from_graph_install_dep_downgrade(tmp_context: WorkContext):
 
 
 def test_resolve_from_graph_toplevel_dep(tmp_context: WorkContext):
+    bt = bootstrapper.Bootstrapper(tmp_context, None, old_graph)
+
     # simulating new bootstrap with a toplevel requirement for foo
     tmp_context.dependency_graph.add_dependency(
         parent_name=None,
@@ -204,41 +191,33 @@ def test_resolve_from_graph_toplevel_dep(tmp_context: WorkContext):
         req_version=Version("1.0.0"),
     )
 
+    bt.why = []
     # resolving foo
-    assert sdist._resolve_from_graph(
-        tmp_context,
-        prev_graph=old_graph,
-        parent_req=None,
+    assert bt._resolve_from_graph(
         req_type=RequirementType.TOP_LEVEL,
         req=Requirement("foo==2"),
         pre_built=False,
     ) == ("", Version("2"))
 
+    bt.why = [(RequirementType.TOP_LEVEL, Requirement("foo"), Version("2"))]
     # resolving pbr dependency of foo even if foo version changed
-    assert sdist._resolve_from_graph(
-        tmp_context,
-        prev_graph=old_graph,
-        parent_req=Requirement("foo"),
+    assert bt._resolve_from_graph(
         req_type=RequirementType.INSTALL,
         req=Requirement("pbr>=5"),
         pre_built=False,
     ) == ("", Version("7"))
 
+    bt.why = []
     # resolving bar
-    assert sdist._resolve_from_graph(
-        tmp_context,
-        prev_graph=old_graph,
-        parent_req=None,
+    assert bt._resolve_from_graph(
         req_type=RequirementType.TOP_LEVEL,
         req=Requirement("bar"),
         pre_built=False,
     ) == ("", Version("1.0.0"))
 
+    bt.why = [(RequirementType.TOP_LEVEL, Requirement("bar"), Version("1.0.0"))]
     # resolving pbr dependency of bar
-    assert sdist._resolve_from_graph(
-        tmp_context,
-        prev_graph=old_graph,
-        parent_req=Requirement("bar"),
+    assert bt._resolve_from_graph(
         req_type=RequirementType.INSTALL,
         req=Requirement("pbr>=5,<7"),
         pre_built=False,
