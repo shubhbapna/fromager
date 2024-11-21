@@ -67,15 +67,15 @@ class Bootstrapper:
 
         pbi = self.ctx.package_build_info(req)
         if pbi.pre_built:
-            resolved_version, wheel_url, wheel_filename, unpack_dir = (
-                self._handle_prebuilt_sources(req, req_type)
+            wheel_url, resolved_version = self._resolve_prebuilt_with_history(
+                req=req,
+                req_type=req_type,
             )
             # Remember that this is a prebuilt wheel, and where we got it.
             source_url = wheel_url
-            source_url_type = str(SourceType.PREBUILT)
         else:
-            resolved_version, source_url, source_filename, source_url_type = (
-                self._handle_sources(req, req_type)
+            source_url, resolved_version = self._resolve_source_with_history(
+                req, req_type
             )
 
         self._add_to_graph(req, req_type, resolved_version, source_url)
@@ -100,7 +100,18 @@ class Bootstrapper:
         # for cleanup
         build_env = None
         sdist_root_dir = None
-        if not pbi.pre_built:
+        if pbi.pre_built:
+            wheel_filename, unpack_dir = self._download_prebuilt(
+                req=req,
+                req_type=req_type,
+                resolved_version=resolved_version,
+                wheel_url=source_url,
+            )
+            source_url_type = str(SourceType.PREBUILT)
+        else:
+            source_filename, source_url_type = self._download_source(
+                req=req, resolved_version=resolved_version, source_url=source_url
+            )
             (
                 sdist_root_dir,
                 unpack_dir,
@@ -276,14 +287,9 @@ class Bootstrapper:
             build_environment.maybe_install(self.ctx, dep, build_type, str(resolved))
             self.progressbar.update()
 
-    def _handle_sources(
-        self, req: Requirement, req_type: RequirementType
-    ) -> tuple[Version, str, pathlib.Path, str]:
-        source_url, resolved_version = self._resolve_source_with_history(
-            req=req,
-            req_type=req_type,
-        )
-
+    def _download_source(
+        self, req: Requirement, resolved_version: Version, source_url: str
+    ) -> tuple[pathlib.Path, str]:
         source_filename = sources.download_source(
             ctx=self.ctx,
             req=req,
@@ -292,17 +298,16 @@ class Bootstrapper:
         )
         source_url_type = sources.get_source_type(self.ctx, req)
 
-        return (resolved_version, source_url, source_filename, source_url_type)
+        return (source_filename, source_url_type)
 
-    def _handle_prebuilt_sources(
-        self, req: Requirement, req_type: RequirementType
-    ) -> tuple[Version, str, pathlib.Path, pathlib.Path]:
+    def _download_prebuilt(
+        self,
+        req: Requirement,
+        req_type: RequirementType,
+        resolved_version: Version,
+        wheel_url: str,
+    ) -> tuple[pathlib.Path, pathlib.Path]:
         logger.info(f"{req.name}: {req_type} requirement {req} uses a pre-built wheel")
-
-        wheel_url, resolved_version = self._resolve_prebuilt_with_history(
-            req=req,
-            req_type=req_type,
-        )
 
         wheel_filename = wheels.download_wheel(req, wheel_url, self.ctx.wheels_prebuilt)
 
@@ -319,7 +324,7 @@ class Bootstrapper:
         unpack_dir = self.ctx.work_dir / f"{req.name}-{resolved_version}"
         if not unpack_dir.exists():
             unpack_dir.mkdir()
-        return (resolved_version, wheel_url, wheel_filename, unpack_dir)
+        return (wheel_filename, unpack_dir)
 
     def _resolve_source_with_history(
         self,
